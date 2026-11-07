@@ -17,21 +17,20 @@ from promo_finder.cli import run
 st.set_page_config(page_title="Promo Finder", page_icon="🎬", layout="wide")
 DEMO = Path(__file__).parent / "tests" / "fixture_ep.txt"
 
-st.title("🎬 Promo Finder")
-st.caption("Finds 20–60 s promo clips (hook in 3 s → unresolved ending → makes sense alone) in microdrama screenplays. "
-           "A shortlist for an editor, not final picks.")
+st.title("🎬 I Married a Broken Soldier. He was a Duke-scripts")
+st.caption("Extracting the most engaging 20–60s moments from microdrama scripts. By identifying early hooks and unresolved tension, it delivers a highly curated shortlist so our editors can focus on the final cut.")
 
 with st.sidebar:
-    st.header("1 · Input")
+    st.header("1.Input")
     files = st.file_uploader("Screenplay .txt files (one per episode)", type=["txt"], accept_multiple_files=True)
     use_demo = st.button("Use the tiny invented demo script")
-    st.header("2 · Settings")
+    st.header("2.Settings")
     min_score = st.slider("Minimum score", 0.0, 0.9, 0.60, 0.01, help="Lower = more promos, more weak ones.")
     per_ep = st.slider("Max promos per episode", 1, 3, 2)
     top_n = st.slider("Size of 'post first' list", 3, 20, 10)
     stitch = st.checkbox("Allow stitched 'teaser + payoff' clips", True)
-    st.header("3 · Optional LLM re-rank")
-    provider = st.selectbox("Provider", ["off (rule-based only)", "anthropic", "openai"])
+    st.header("3.Optional LLM re-rank")
+    provider = st.selectbox("Provider", ["off (rule-based only)", "openai", "anthropic"])
     api_key = st.text_input("API key (kept in this session only)", type="password") if provider != "off (rule-based only)" else ""
     model = st.text_input("Model name (blank = default)") if provider != "off (rule-based only)" else ""
     if provider != "off (rule-based only)":
