@@ -1,4 +1,4 @@
-"""CLI:  python -m promo_finder run --input DIR --out DIR [--per-ep 2] [--min-score 0.6] [--weights w.json] [--llm anthropic|openai|mock]"""
+"""CLI:  python -m promo_finder run --input DIR --out DIR [--per-ep 2] [--min-score 0.6] [--weights w.json] [--llm anthropic|openai|mock] [--strategy baseline|semantic|hybrid]"""
 from __future__ import annotations
 
 import argparse
@@ -42,7 +42,7 @@ def transcript(ix, c):
     return rows
 
 
-def run(input_dir, out_dir, per_ep=2, cands_per_ep=3, min_score=0.60, weights=None, use_stitch=True, llm=None, top_n=10):
+def run(input_dir, out_dir, per_ep=2, cands_per_ep=3, min_score=0.60, weights=None, use_stitch=True, llm=None, top_n=10, strategy="baseline"):
     t0 = time.time()
     eps = load_dir(input_dir)
     idx, lead = build_indexes(eps)
@@ -52,7 +52,7 @@ def run(input_dir, out_dir, per_ep=2, cands_per_ep=3, min_score=0.60, weights=No
     all_c = []
     for e in eps:
         ix = idx[e.number]
-        cands = find_for_episode(ix, w, per_ep=cands_per_ep, use_stitch=use_stitch)
+        cands = find_for_episode(ix, w, per_ep=cands_per_ep, use_stitch=use_stitch, strategy=strategy)
         if llm:
             from .llm import rerank
             cands = rerank(llm, ix, cands)
@@ -68,7 +68,6 @@ def run(input_dir, out_dir, per_ep=2, cands_per_ep=3, min_score=0.60, weights=No
         (out / "episode_candidates" / f"ep_{e.number:02d}.json").write_text(
             json.dumps({"episode": e.number, "logline": e.logline, "duration_s": round(e.duration, 1), "candidates": rows}, indent=2, ensure_ascii=False))
 
-    # final selection: <= per_ep per episode and above threshold; always keep each episode's best so no episode is silently skipped
     selected = []
     for e in eps:
         mine = [c for c in all_c if c.ep == e.number][:per_ep]
@@ -77,7 +76,6 @@ def run(input_dir, out_dir, per_ep=2, cands_per_ep=3, min_score=0.60, weights=No
     top = rank(selected, idx, top_n=top_n)
     top_ids = {id(c): i + 1 for i, c in enumerate(top)}
     ordered = sorted(selected, key=lambda c: -c.score)
-    # global rank: diversity-aware top-N first, then the rest by score
     rest = [c for c in ordered if id(c) not in top_ids]
     ranked = top + rest
     promos = []
@@ -102,7 +100,8 @@ def run(input_dir, out_dir, per_ep=2, cands_per_ep=3, min_score=0.60, weights=No
     write_ranked_md(out / "promos_ranked_top.md", promos, top_n)
     (out / "run_log.json").write_text(json.dumps({"tool_version": __version__, "episodes": len(eps), "lead_detected": lead,
                                                    "seconds": round(time.time() - t0, 1), "weights": w, "min_score": min_score,
-                                                   "per_ep": per_ep, "stitch": use_stitch, "llm": llm or "off (rule-based only)"}, indent=2))
+                                                   "per_ep": per_ep, "stitch": use_stitch, "strategy": strategy,
+                                                   "llm": llm or "off (rule-based only)"}, indent=2))
     return promos
 
 
@@ -134,6 +133,7 @@ def main(argv=None):
     r.add_argument("--top", type=int, default=10)
     r.add_argument("--weights", help="JSON file overriding score weights")
     r.add_argument("--no-stitch", action="store_true")
+    r.add_argument("--strategy", choices=["baseline", "semantic", "hybrid"], default="baseline", help="Candidate generation strategy")
     r.add_argument("--llm", choices=["anthropic", "openai", "mock"], help="optional LLM re-rank of the shortlisted candidates")
     c = sub.add_parser("cost")
     c.add_argument("--input", required=True)
@@ -141,7 +141,7 @@ def main(argv=None):
     if a.cmd == "cost":
         return cost(a.input)
     w = json.load(open(a.weights)) if a.weights else None
-    promos = run(a.input, a.out, a.per_ep, 3, a.min_score, w, not a.no_stitch, a.llm, a.top)
+    promos = run(a.input, a.out, a.per_ep, 3, a.min_score, w, not a.no_stitch, a.llm, a.top, strategy=a.strategy)
     print(f"{len(promos)} promos written to {a.out}")
 
 
