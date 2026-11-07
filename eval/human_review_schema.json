@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Promo Human Evaluation Template",
+  "type": "object",
+  "properties": {
+    "candidate_id": { "type": "string" },
+    "episode_id": { "type": "string" },
+    "reviewer_id": { "type": "string", "description": "Anonymized rater ID" },
+    "hook_score": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "cliffhanger_score": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "standalone_comprehensibility": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "narrative_coherence": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "spoiler_risk_level": { 
+        "type": "string", 
+        "enum": ["none", "minor_reveal", "major_ruin"] 
+    },
+    "publishability_decision": {
+        "type": "boolean",
+        "description": "Would you post this on TikTok/Reels?"
+    },
+    "boundary_quality": {
+        "type": "string",
+        "enum": ["perfect", "cut_too_early", "cut_too_late", "awkward_stitch"]
+    },
+    "reviewer_comments": { "type": "string" }
+  },
+  "required": ["candidate_id", "reviewer_id", "publishability_decision"]
+}
