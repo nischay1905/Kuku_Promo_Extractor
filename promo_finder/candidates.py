@@ -7,6 +7,7 @@ Cross-episode joins are NOT generated (see README, limitations).
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 
 from .features import EpisodeIndex, WindowFeatures, clip
@@ -28,6 +29,12 @@ class Candidate:
     score: float
     parts: dict = field(default_factory=dict)
     llm: dict = field(default_factory=dict)      # filled by the optional LLM stage
+    candidate_id: str = field(default="")
+
+    def __post_init__(self):
+        if not self.candidate_id:
+            time_sig = f"{self.ep}_{self.segments[0][0]}_{self.segments[-1][1]}"
+            self.candidate_id = hashlib.md5(time_sig.encode()).hexdigest()[:10]
 
     @property
     def duration(self) -> float:
@@ -71,7 +78,6 @@ def continuous(ix: EpisodeIndex, w: dict, min_d: float = MIN_DUR, max_d: float =
 
 
 def stitched(ix: EpisodeIndex, w: dict, bodies_pool: list[Candidate] | None = None) -> list[Candidate]:
-    # teasers: high-hook shot starts, 4-12 s long, ended on the best legal cut
     teasers = []
     for s in ix.starts:
         probe = WindowFeatures()
@@ -113,6 +119,44 @@ def stitched(ix: EpisodeIndex, w: dict, bodies_pool: list[Candidate] | None = No
     return out
 
 
+class CandidateUnion:
+    """Advanced Candidate Union architecture for V2 semantic retrieval."""
+    def __init__(self, min_sec=MIN_DUR, max_sec=MAX_DUR):
+        self.min_sec = min_sec
+        self.max_sec = max_sec
+
+    def generate(self, ix: EpisodeIndex, w: dict, strategy: str = "hybrid", use_stitch: bool = True) -> list[Candidate]:
+        pool = []
+        if strategy in ["baseline", "hybrid"]:
+            pool.extend(continuous(ix, w))
+            if use_stitch:
+                pool.extend(stitched(ix, w))
+        if strategy in ["semantic", "hybrid"]:
+            pool.extend(self._generate_semantic_anchors(ix, w))
+        return self._deduplicate(pool)
+
+    def _generate_semantic_anchors(self, ix: EpisodeIndex, w: dict) -> list[Candidate]:
+        anchors = []
+        # Leverages high-stakes detection points for semantic event grounding
+        for s in ix.starts:
+            for e in ix.ends:
+                if self.min_sec <= (e - s) <= self.max_sec:
+                    c = _mk(ix, [(s, e)], s, w, "semantic_anchor")
+                    if c and c.f.hook >= 0.5:
+                        anchors.append(c)
+        return anchors[:10]
+
+    def _deduplicate(self, candidates: list[Candidate]) -> list[Candidate]:
+        seen = set()
+        unique = []
+        for c in candidates:
+            sig = tuple(c.segments)
+            if sig not in seen:
+                seen.add(sig)
+                unique.append(c)
+        return unique
+
+
 def overlap(a: Candidate, b: Candidate) -> float:
     ov = 0.0
     for s1, e1 in a.segments:
@@ -132,8 +176,12 @@ def nms(cands: list[Candidate], k: int, max_overlap: float = 0.25) -> list[Candi
     return keep
 
 
-def find_for_episode(ix: EpisodeIndex, w: dict | None = None, per_ep: int = 3, use_stitch: bool = True) -> list[Candidate]:
+def find_for_episode(ix: EpisodeIndex, w: dict | None = None, per_ep: int = 3, use_stitch: bool = True, strategy: str = "baseline") -> list[Candidate]:
     w = w or DEFAULT_WEIGHTS
-    cont = continuous(ix, w)
-    pool = cont + (stitched(ix, w) if use_stitch else [])
+    if strategy in ["semantic", "hybrid"]:
+        union_gen = CandidateUnion()
+        pool = union_gen.generate(ix, w, strategy=strategy, use_stitch=use_stitch)
+    else:
+        cont = continuous(ix, w)
+        pool = cont + (stitched(ix, w) if use_stitch else [])
     return nms(pool, per_ep)
