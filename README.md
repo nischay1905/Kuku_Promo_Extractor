@@ -55,32 +55,96 @@ The weighted score is adjusted by configured penalties for flagged content and b
 The scoring is intentionally **interpretable**: each selected clip carries feature-level scores and a short explanation instead of returning only an opaque model prediction.
 
 ---
-
-## ⚙️ End-to-end workflow
+## ⚙️ End-to-End System Workflow
 
 ```mermaid
 flowchart TD
-    A["Timestamped screenplay .txt files"] --> B["Parse screenplay blocks"]
-    B --> C["Typed events<br/>Camera · Action · Sound FX · Dialogue"]
-    C --> D["Build episode index<br/>Scenes · Speakers · Timing · Text features"]
-    D --> E["Identify legal cut points"]
-    E --> F["Generate 20–60s candidates"]
-    F --> G["Continuous clips"]
-    F --> H["Optional teaser + payoff clips"]
-    G --> I["Rule-based feature extraction"]
-    H --> I
-    I --> J["Weighted scoring + content flags"]
-    J --> K["Per-episode shortlist"]
-    K --> L{"Optional LLM re-ranking"}
-    L -->|Disabled| M["Global ranking"]
-    L -->|Enabled| N["LLM judgement of shortlist"]
-    N --> M
-    M --> O["Diversity-aware selection"]
-    O --> P["Ranked promos + explanations"]
-    P --> Q["CSV · JSON · Markdown · Streamlit UI"]
-    Q --> R["Human editor review"]
-```
 
+    A(["📂 INPUT<br/>Timestamped Screenplay Files<br/>.txt · One file per episode"])
+
+    B["01 · SCREENPLAY PARSING<br/>Parse screenplay blocks"]
+
+    C["TYPED EVENTS<br/>Camera · Action · Sound FX · Dialogue"]
+
+    D["02 · EPISODE INDEXING<br/>Scenes · Speakers · Timing<br/>Text Features"]
+
+    E["03 · LEGAL CUT-POINT VALIDATION<br/>Identify valid editing boundaries"]
+
+    F{"04 · CANDIDATE GENERATION"}
+
+    G["CONTINUOUS CLIPS<br/>Single uninterrupted segment"]
+
+    H["STITCHED CLIPS<br/>Optional Teaser + Payoff"]
+
+    I["05 · FEATURE EXTRACTION<br/>Hook · Cliffhanger · Intensity<br/>Pace · Standalone Clarity"]
+
+    J["06 · WEIGHTED SCORING<br/>Feature Scores · Content Flags"]
+
+    K["07 · PER-EPISODE SHORTLIST<br/>Filter and rank candidates"]
+
+    L{"OPTIONAL LLM<br/>RE-RANKING"}
+
+    M["RULE-BASED<br/>Global Ranking"]
+
+    N["LLM REVIEW<br/>Anthropic / OpenAI<br/>Semantic Judgement"]
+
+    O["08 · DIVERSITY-AWARE SELECTION<br/>Candidate Quality · Episode Coverage<br/>MMR-style Diversity"]
+
+    P["09 · RANKED PROMO SHORTLIST<br/>Scores · Hooks · Endings<br/>Editorial Explanations"]
+
+    Q["10 · OUTPUT EXPORT<br/>CSV · JSON · Markdown<br/>Streamlit Dashboard"]
+
+    R(["🎬 HUMAN EDITOR REVIEW<br/>Inspect · Refine · Approve"])
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+
+    F --> G
+    F --> H
+
+    G --> I
+    H --> I
+
+    I --> J
+    J --> K
+    K --> L
+
+    L -->|Disabled| M
+    L -->|Enabled| N
+
+    N --> M
+    M --> O
+    O --> P
+    P --> Q
+    Q --> R
+
+    classDef input fill:#164E63,stroke:#22D3EE,color:#FFFFFF,stroke-width:2px
+    classDef parsing fill:#1E40AF,stroke:#60A5FA,color:#FFFFFF,stroke-width:2px
+    classDef processing fill:#3730A3,stroke:#818CF8,color:#FFFFFF,stroke-width:2px
+    classDef decision fill:#854D0E,stroke:#FACC15,color:#FFFFFF,stroke-width:2px
+    classDef candidate fill:#065F46,stroke:#34D399,color:#FFFFFF,stroke-width:2px
+    classDef scoring fill:#6B21A8,stroke:#C084FC,color:#FFFFFF,stroke-width:2px
+    classDef llm fill:#9D174D,stroke:#F472B6,color:#FFFFFF,stroke-width:2px
+    classDef ranking fill:#9A3412,stroke:#FB923C,color:#FFFFFF,stroke-width:2px
+    classDef output fill:#166534,stroke:#4ADE80,color:#FFFFFF,stroke-width:2px
+    classDef human fill:#134E4A,stroke:#2DD4BF,color:#FFFFFF,stroke-width:2px
+
+    class A input
+    class B,C parsing
+    class D,E processing
+    class F,L decision
+    class G,H candidate
+    class I,J scoring
+    class N llm
+    class K,M,O ranking
+    class P,Q output
+    class R human
+
+    linkStyle default stroke:#94A3B8,stroke-width:2px
+```
 ### Pipeline stages
 
 **1. Screenplay parsing**
