@@ -57,58 +57,65 @@ The scoring is intentionally **interpretable**: each selected clip carries featu
 ---
 ## ⚙️ End-to-End System Workflow
 
+The pipeline transforms timestamped screenplays into explainable, ranked promo recommendations through five major stages.
+
 ```mermaid
-flowchart LR
+flowchart TB
 
-    A(["📂 INPUT<br/>Timestamped Screenplay Files<br/>.txt · One file per episode"])
+    subgraph S1["01 · INPUT & SCREENPLAY PROCESSING"]
+        direction LR
+        A(["📂 INPUT<br/>Timestamped .txt Files<br/>One File Per Episode"])
+        B["SCREENPLAY PARSING<br/>Parse screenplay blocks"]
+        C["TYPED EVENTS<br/>Camera · Action<br/>Sound FX · Dialogue"]
+        A --> B --> C
+    end
 
-    B["01 · SCREENPLAY PARSING<br/>Parse screenplay blocks<br/>Camera · Action · Sound FX · Dialogue"]
+    subgraph S2["02 · INDEXING & CANDIDATE GENERATION"]
+        direction LR
+        D["EPISODE INDEXING<br/>Scenes · Speakers<br/>Timing · Text Features"]
+        E["LEGAL CUT-POINTS<br/>Validate editing boundaries"]
+        F{"CANDIDATE<br/>GENERATION"}
+        G["CONTINUOUS CLIPS<br/>Single uninterrupted<br/>20–60s"]
+        H["STITCHED CLIPS<br/>Optional Teaser<br/>+ Later Payoff"]
+        D --> E --> F
+        F --> G
+        F --> H
+    end
 
-    C["02 · EPISODE INDEXING<br/>Scenes · Speakers<br/>Timing · Text Features"]
+    subgraph S3["03 · FEATURE EXTRACTION & SCORING"]
+        direction LR
+        I["FEATURE EXTRACTION<br/>Hook · Cliffhanger<br/>Intensity · Pace"]
+        J["STANDALONE CLARITY<br/>Context · Duration Fit"]
+        K["WEIGHTED SCORING<br/>Feature Scores<br/>Content Flags · Penalties"]
+        L["PER-EPISODE SHORTLIST<br/>Filter Top Candidates"]
+        I --> J --> K --> L
+    end
 
-    D["03 · LEGAL CUT-POINT VALIDATION<br/>Identify valid editing boundaries"]
+    subgraph S4["04 · AI-ASSISTED RANKING"]
+        direction LR
+        M{"OPTIONAL LLM<br/>RE-RANKING"}
+        N["LLM REVIEW<br/>Anthropic / OpenAI<br/>Semantic Judgement"]
+        O["RULE-BASED<br/>GLOBAL RANKING"]
+        P["DIVERSITY SELECTION<br/>Candidate Quality<br/>Episode Coverage<br/>MMR-style Diversity"]
+        M -->|Enabled| N
+        M -->|Disabled| O
+        N --> O
+        O --> P
+    end
 
-    E{"04 · CANDIDATE<br/>GENERATION"}
+    subgraph S5["05 · RESULTS & EDITORIAL REVIEW"]
+        direction LR
+        Q["RANKED PROMO SHORTLIST<br/>Scores · Hooks · Endings<br/>Explanations"]
+        R["OUTPUT EXPORT<br/>CSV · JSON · Markdown<br/>Streamlit Dashboard"]
+        T(["🎬 HUMAN EDITOR<br/>Inspect · Refine · Approve"])
+        Q --> R --> T
+    end
 
-    F["CONTINUOUS CLIPS<br/>Single uninterrupted<br/>20–60s segment"]
-
-    G["STITCHED CLIPS<br/>Optional teaser<br/>+ later payoff"]
-
-    H["05 · FEATURE EXTRACTION<br/>Hook · Cliffhanger<br/>Intensity · Pace<br/>Standalone Clarity"]
-
-    I["06 · EXPLAINABLE SCORING<br/>Weighted Feature Scores<br/>Content Flags · Penalties"]
-
-    J["07 · PER-EPISODE SHORTLIST<br/>Filter top candidates"]
-
-    K{"OPTIONAL LLM<br/>RE-RANKING"}
-
-    L["RULE-BASED<br/>GLOBAL RANKING"]
-
-    M["LLM REVIEW<br/>Anthropic / OpenAI<br/>Semantic Judgement"]
-
-    N["08 · DIVERSITY-AWARE SELECTION<br/>Candidate Quality<br/>Episode Coverage<br/>MMR-style Diversity"]
-
-    O["09 · RANKED PROMO SHORTLIST<br/>Scores · Hooks · Endings<br/>Editorial Explanations"]
-
-    P["10 · OUTPUT EXPORT<br/>CSV · JSON · Markdown<br/>Streamlit Dashboard"]
-
-    Q(["🎬 HUMAN EDITOR REVIEW<br/>Inspect · Refine · Approve"])
-
-    A --> B --> C --> D --> E
-
-    E --> F
-    E --> G
-
-    F --> H
-    G --> H
-
-    H --> I --> J --> K
-
-    K -->|Disabled| L
-    K -->|Enabled| M
-    M --> L
-
-    L --> N --> O --> P --> Q
+    C --> D
+    G --> I
+    H --> I
+    L --> M
+    P --> Q
 
     classDef input fill:#164E63,stroke:#22D3EE,color:#FFFFFF,stroke-width:2px
     classDef parsing fill:#1E40AF,stroke:#60A5FA,color:#FFFFFF,stroke-width:2px
@@ -122,15 +129,21 @@ flowchart LR
     classDef human fill:#134E4A,stroke:#2DD4BF,color:#FFFFFF,stroke-width:2px
 
     class A input
-    class B parsing
-    class C,D processing
-    class E,K decision
-    class F,G candidate
-    class H,I scoring
-    class J,L,N ranking
-    class M llm
-    class O,P output
-    class Q human
+    class B,C parsing
+    class D,E processing
+    class F,M decision
+    class G,H candidate
+    class I,J,K scoring
+    class L,O,P ranking
+    class N llm
+    class Q,R output
+    class T human
+
+    style S1 fill:#172554,stroke:#60A5FA,stroke-width:2px,color:#FFFFFF
+    style S2 fill:#052E2B,stroke:#34D399,stroke-width:2px,color:#FFFFFF
+    style S3 fill:#2E1065,stroke:#C084FC,stroke-width:2px,color:#FFFFFF
+    style S4 fill:#500724,stroke:#F472B6,stroke-width:2px,color:#FFFFFF
+    style S5 fill:#052E16,stroke:#4ADE80,stroke-width:2px,color:#FFFFFF
 
     linkStyle default stroke:#94A3B8,stroke-width:2px
 ```
