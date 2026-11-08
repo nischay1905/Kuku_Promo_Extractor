@@ -2,6 +2,12 @@
 
 # 🎬 Kuku Promo Extractor
 
+---
+
+**Author:** Nischay Sanjay Jiwankar  
+**Project:** Kuku Promo Extractor  
+**Assignment:** Kuku AI Generalist Assignment
+
 ### Find editor-ready promo moments from timestamped microdrama screenplays.
 
 **A screenplay-first promo discovery pipeline that identifies 20–60 second clips, validates edit boundaries, scores narrative engagement, and ranks candidates for human review.**
@@ -255,18 +261,6 @@ The ranked Markdown report provides a suggested posting order. It is an editoria
 | 9 | 24 | 36.9 s | Continuous | **0.8120** |
 | 10 | 13 | 40.9 s | Continuous | 0.7277 |
 
-### Example candidate
-
-**Episode 27 · 00:48.80–00:55.60 + 01:55.00–02:30.50**
-
-- **Duration:** 42.3 seconds
-- **Type:** Stitched teaser + payoff
-- **Candidate score:** 0.7433
-- **Opening hook:** A set of heavy doors bursts open, revealing the Blond Nobleman with Lady Catherine and a royal guard.
-- **Ending beat:** The Blond Nobleman says, “Take her.”
-- **Why it was selected:** The opening creates an immediate visual question, while the later payoff ends on a short, decisive line.
-
-This example demonstrates why the system supports both uninterrupted clips and carefully joined teaser/payoff moments.
 
 ### What the results tell us
 
