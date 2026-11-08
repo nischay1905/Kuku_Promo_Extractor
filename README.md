@@ -57,64 +57,65 @@ The scoring is intentionally **interpretable**: each selected clip carries featu
 ---
 ## ⚙️ End-to-End System Workflow
 
-The pipeline transforms timestamped screenplays into explainable, ranked promo recommendations through five major stages.
-
 ```mermaid
 flowchart TB
 
-    subgraph S1["01 · INPUT & SCREENPLAY PROCESSING"]
+    subgraph ROW1["01 · SCREENPLAY PROCESSING"]
         direction LR
         A(["📂 INPUT<br/>Timestamped .txt Files<br/>One File Per Episode"])
-        B["SCREENPLAY PARSING<br/>Parse screenplay blocks"]
+        B["SCREENPLAY PARSING<br/>Parse Screenplay Blocks"]
         C["TYPED EVENTS<br/>Camera · Action<br/>Sound FX · Dialogue"]
-        A --> B --> C
+        D["EPISODE INDEXING<br/>Scenes · Speakers<br/>Timing · Text Features"]
+
+        A --> B --> C --> D
     end
 
-    subgraph S2["02 · INDEXING & CANDIDATE GENERATION"]
+    subgraph ROW2["02 · CANDIDATE GENERATION"]
         direction LR
-        D["EPISODE INDEXING<br/>Scenes · Speakers<br/>Timing · Text Features"]
-        E["LEGAL CUT-POINTS<br/>Validate editing boundaries"]
+        E["LEGAL CUT-POINTS<br/>Validate Editing Boundaries"]
         F{"CANDIDATE<br/>GENERATION"}
-        G["CONTINUOUS CLIPS<br/>Single uninterrupted<br/>20–60s"]
+        G["CONTINUOUS CLIPS<br/>Single Uninterrupted<br/>20–60 Seconds"]
         H["STITCHED CLIPS<br/>Optional Teaser<br/>+ Later Payoff"]
-        D --> E --> F
+
+        E --> F
         F --> G
         F --> H
     end
 
-    subgraph S3["03 · FEATURE EXTRACTION & SCORING"]
+    subgraph ROW3["03 · FEATURE EXTRACTION & SCORING"]
         direction LR
         I["FEATURE EXTRACTION<br/>Hook · Cliffhanger<br/>Intensity · Pace"]
-        J["STANDALONE CLARITY<br/>Context · Duration Fit"]
-        K["WEIGHTED SCORING<br/>Feature Scores<br/>Content Flags · Penalties"]
-        L["PER-EPISODE SHORTLIST<br/>Filter Top Candidates"]
+        J["WEIGHTED SCORING<br/>Feature Scores<br/>Content Flags · Penalties"]
+        K["EPISODE SHORTLIST<br/>Filter Top Candidates"]
+        L{"OPTIONAL LLM<br/>RE-RANKING"}
+
         I --> J --> K --> L
     end
 
-    subgraph S4["04 · AI-ASSISTED RANKING"]
+    subgraph ROW4["04 · RANKING & FINAL OUTPUT"]
         direction LR
-        M{"OPTIONAL LLM<br/>RE-RANKING"}
-        N["LLM REVIEW<br/>Anthropic / OpenAI<br/>Semantic Judgement"]
-        O["RULE-BASED<br/>GLOBAL RANKING"]
-        P["DIVERSITY SELECTION<br/>Candidate Quality<br/>Episode Coverage<br/>MMR-style Diversity"]
-        M -->|Enabled| N
-        M -->|Disabled| O
-        N --> O
-        O --> P
+        M["LLM REVIEW<br/>Anthropic / OpenAI<br/>Semantic Judgement"]
+        N["GLOBAL RANKING<br/>Rule-Based Selection"]
+        O["DIVERSITY SELECTION<br/>Quality · Episode Coverage"]
+        P["RANKED PROMOS<br/>Scores · Hooks<br/>Editorial Explanations"]
     end
 
-    subgraph S5["05 · RESULTS & EDITORIAL REVIEW"]
+    subgraph ROW5["05 · DELIVERY"]
         direction LR
-        Q["RANKED PROMO SHORTLIST<br/>Scores · Hooks · Endings<br/>Explanations"]
-        R["OUTPUT EXPORT<br/>CSV · JSON · Markdown<br/>Streamlit Dashboard"]
-        T(["🎬 HUMAN EDITOR<br/>Inspect · Refine · Approve"])
-        Q --> R --> T
+        Q["EXPORT RESULTS<br/>CSV · JSON · Markdown"]
+        R["STREAMLIT DASHBOARD<br/>Interactive Results"]
+        S(["🎬 HUMAN EDITOR<br/>Inspect · Refine · Approve"])
+
+        Q --> R --> S
     end
 
-    C --> D
+    D --> E
     G --> I
     H --> I
-    L --> M
+    L -->|Enabled| M
+    L -->|Disabled| N
+    M --> N
+    N --> O --> P
     P --> Q
 
     classDef input fill:#164E63,stroke:#22D3EE,color:#FFFFFF,stroke-width:2px
@@ -131,19 +132,19 @@ flowchart TB
     class A input
     class B,C parsing
     class D,E processing
-    class F,M decision
+    class F,L decision
     class G,H candidate
-    class I,J,K scoring
-    class L,O,P ranking
-    class N llm
-    class Q,R output
-    class T human
+    class I,J scoring
+    class K,N,O ranking
+    class M llm
+    class P,Q,R output
+    class S human
 
-    style S1 fill:#172554,stroke:#60A5FA,stroke-width:2px,color:#FFFFFF
-    style S2 fill:#052E2B,stroke:#34D399,stroke-width:2px,color:#FFFFFF
-    style S3 fill:#2E1065,stroke:#C084FC,stroke-width:2px,color:#FFFFFF
-    style S4 fill:#500724,stroke:#F472B6,stroke-width:2px,color:#FFFFFF
-    style S5 fill:#052E16,stroke:#4ADE80,stroke-width:2px,color:#FFFFFF
+    style ROW1 fill:#172554,stroke:#60A5FA,stroke-width:2px,color:#FFFFFF
+    style ROW2 fill:#052E2B,stroke:#34D399,stroke-width:2px,color:#FFFFFF
+    style ROW3 fill:#2E1065,stroke:#C084FC,stroke-width:2px,color:#FFFFFF
+    style ROW4 fill:#500724,stroke:#F472B6,stroke-width:2px,color:#FFFFFF
+    style ROW5 fill:#052E16,stroke:#4ADE80,stroke-width:2px,color:#FFFFFF
 
     linkStyle default stroke:#94A3B8,stroke-width:2px
 ```
