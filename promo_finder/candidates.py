@@ -1,22 +1,16 @@
-"""Generate and score candidate promos for one episode.
-
-Two kinds:
-  continuous : one stretch [s, e], 20-60 s, starts on a shot cut, ends on a legal cut (never mid-line)
-  stitched   : 'teaser + payoff' = a short high-hook clip, then a skip, then a run that ends on the cliffhanger
-Cross-episode joins are NOT generated (see README, limitations).
-"""
+"""Generate and score continuous, stitched, and semantic promo candidates."""
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
 
-from .features import EpisodeIndex, WindowFeatures, clip
+from .features import EpisodeIndex, WindowFeatures
+from .semantics import extract_semantic_anchors
 
 MIN_DUR, MAX_DUR = 20.0, 60.0
-
 DEFAULT_WEIGHTS = {"hook": 0.28, "cliff": 0.28, "intensity": 0.14, "pace": 0.10, "standalone": 0.12, "dur": 0.08}
 FLAG_PENALTY = {"sexual-content": 0.15, "violence/torture": 0.03}
-STITCH_PENALTY = 0.07          # stitched must clearly beat a continuous cut to be chosen
+STITCH_PENALTY = 0.07
 STITCH_GAP_MIN = 8.0
 
 
@@ -28,160 +22,224 @@ class Candidate:
     f: WindowFeatures
     score: float
     parts: dict = field(default_factory=dict)
-    llm: dict = field(default_factory=dict)      # filled by the optional LLM stage
+    llm: dict = field(default_factory=dict)
     candidate_id: str = field(default="")
 
     def __post_init__(self):
         if not self.candidate_id:
-            time_sig = f"{self.ep}_{self.segments[0][0]}_{self.segments[-1][1]}"
-            self.candidate_id = hashlib.md5(time_sig.encode()).hexdigest()[:10]
+            signature = f"{self.ep}_{self.segments[0][0]}_{self.segments[-1][1]}"
+            self.candidate_id = hashlib.md5(signature.encode()).hexdigest()[:10]
 
     @property
     def duration(self) -> float:
-        return sum(e - s for s, e in self.segments)
+        return sum(end - start for start, end in self.segments)
 
 
-def total_score(f: WindowFeatures, w: dict) -> tuple[float, dict]:
-    parts = {"hook": f.hook, "cliff": f.cliff, "intensity": f.intensity, "pace": f.pace,
-             "standalone": f.standalone, "dur": f.dur_pref}
-    s = sum(w[k] * v for k, v in parts.items())
-    for fl in f.flags:
-        s -= FLAG_PENALTY.get(fl, 0.0)
-    return s, parts
+def total_score(features: WindowFeatures, weights: dict) -> tuple[float, dict]:
+    parts = {
+        "hook": features.hook, "cliff": features.cliff,
+        "intensity": features.intensity, "pace": features.pace,
+        "standalone": features.standalone, "dur": features.dur_pref,
+    }
+    score = sum(weights[key] * value for key, value in parts.items())
+    for flag in features.flags:
+        score -= FLAG_PENALTY.get(flag, 0.0)
+    return score, parts
 
 
-def _mk(ix: EpisodeIndex, spans: list[tuple[float, float]], hook_s: float, w: dict, kind: str) -> Candidate | None:
-    f = WindowFeatures()
-    f.hook = ix.hook(hook_s, f)
-    last_s, last_e = spans[-1]
-    f.cliff = ix.cliff(last_e, last_s, f)
-    ix.body(spans, f)
-    if f.n_lines < 3:
+def _make_candidate(ix, spans, hook_start, weights, kind):
+    features = WindowFeatures()
+    features.hook = ix.hook(hook_start, features)
+    last_start, last_end = spans[-1]
+    features.cliff = ix.cliff(last_end, last_start, features)
+    ix.body(spans, features)
+    if features.n_lines < 3:
         return None
-    sc, parts = total_score(f, w)
-    return Candidate(ix.ep.number, list(spans), kind, f, sc, parts)
+    score, parts = total_score(features, weights)
+    return Candidate(ix.ep.number, list(spans), kind, features, score, parts)
 
 
-def continuous(ix: EpisodeIndex, w: dict, min_d: float = MIN_DUR, max_d: float = MAX_DUR) -> list[Candidate]:
-    out = []
-    for s in ix.starts:
-        for e in ix.ends:
-            d = e - s
-            if d < min_d:
+def continuous(ix, weights, min_d=MIN_DUR, max_d=MAX_DUR):
+    candidates = []
+    for start in ix.starts:
+        for end in ix.ends:
+            duration = end - start
+            if duration < min_d:
                 continue
-            if d > max_d:
+            if duration > max_d:
                 break
-            c = _mk(ix, [(s, e)], s, w, "continuous")
-            if c:
-                out.append(c)
-    return out
+            candidate = _make_candidate(ix, [(start, end)], start, weights, "continuous")
+            if candidate:
+                candidates.append(candidate)
+    return candidates
 
 
-def stitched(ix: EpisodeIndex, w: dict, bodies_pool: list[Candidate] | None = None) -> list[Candidate]:
+def stitched(ix, weights, bodies_pool=None):
     teasers = []
-    for s in ix.starts:
+    for start in ix.starts:
         probe = WindowFeatures()
-        h = ix.hook(s, probe)
-        if h < 0.6:
+        hook_score = ix.hook(start, probe)
+        if hook_score < 0.6:
             continue
         best = None
-        for e in ix.ends:
-            if 4.0 <= e - s <= 12.0 and len(ix.lines_in(s, e)) >= 1:
-                pf = WindowFeatures()
-                c = ix.cliff(e, s, pf)
-                if best is None or c > best[0]:
-                    best = (c, e)
+        for end in ix.ends:
+            if 4.0 <= end - start <= 12.0 and len(ix.lines_in(start, end)) >= 1:
+                probe_features = WindowFeatures()
+                cliff_score = ix.cliff(end, start, probe_features)
+                if best is None or cliff_score > best[0]:
+                    best = (cliff_score, end)
         if best:
-            teasers.append((h, s, best[1]))
+            teasers.append((hook_score, start, best[1]))
+
     teasers.sort(reverse=True)
     teasers = teasers[:6]
-    bodies = [c for c in (bodies_pool if bodies_pool is not None else continuous(ix, w, 14.0, 46.0))
-              if c.f.cliff >= 0.45 and 14.0 <= c.duration <= 46.0]
-    bodies.sort(key=lambda c: 0.6 * c.f.cliff + 0.2 * c.f.intensity + 0.2 * c.f.standalone, reverse=True)
+    bodies = [
+        candidate for candidate in (
+            bodies_pool if bodies_pool is not None else continuous(ix, weights, 14.0, 46.0)
+        )
+        if candidate.f.cliff >= 0.45 and 14.0 <= candidate.duration <= 46.0
+    ]
+    bodies.sort(
+        key=lambda candidate: 0.6 * candidate.f.cliff
+        + 0.2 * candidate.f.intensity + 0.2 * candidate.f.standalone,
+        reverse=True,
+    )
     bodies = bodies[:12]
-    out = []
-    for h, ts, te in teasers:
-        for b in bodies:
-            bs, be = b.segments[0]
-            gap = bs - te
-            total = (te - ts) + (be - bs)
-            if gap < STITCH_GAP_MIN or not (MIN_DUR <= total <= MAX_DUR):
+
+    output = []
+    for _, teaser_start, teaser_end in teasers:
+        for body in bodies:
+            body_start, body_end = body.segments[0]
+            gap = body_start - teaser_end
+            duration = (teaser_end - teaser_start) + (body_end - body_start)
+            if gap < STITCH_GAP_MIN or not (MIN_DUR <= duration <= MAX_DUR):
                 continue
-            c = _mk(ix, [(ts, te), (bs, be)], ts, w, "stitched")
-            if not c:
+            candidate = _make_candidate(
+                ix, [(teaser_start, teaser_end), (body_start, body_end)],
+                teaser_start, weights, "stitched",
+            )
+            if not candidate:
                 continue
-            t_sp = {l.who for l in ix.lines_in(ts, te)}
-            b_sp = {l.who for l in ix.lines_in(bs, be)}
-            if not (t_sp & b_sp):
+            teaser_speakers = {line.who for line in ix.lines_in(teaser_start, teaser_end)}
+            body_speakers = {line.who for line in ix.lines_in(body_start, body_end)}
+            if not (teaser_speakers & body_speakers):
                 continue
-            c.score -= STITCH_PENALTY + min(0.04, 0.001 * gap)
-            out.append(c)
-    return out
+            candidate.score -= STITCH_PENALTY + min(0.04, 0.001 * gap)
+            output.append(candidate)
+    return output
 
 
 class CandidateUnion:
-    """Advanced Candidate Union architecture for V2 semantic retrieval."""
-    def __init__(self, min_sec=MIN_DUR, max_sec=MAX_DUR):
-        self.min_sec = min_sec
-        self.max_sec = max_sec
+    """Combine baseline candidates with legal windows grounded around story beats."""
 
-    def generate(self, ix: EpisodeIndex, w: dict, strategy: str = "hybrid", use_stitch: bool = True) -> list[Candidate]:
+    def __init__(self, min_sec=MIN_DUR, max_sec=MAX_DUR, max_anchors=12, windows_per_anchor=3):
+        self.min_sec = float(min_sec)
+        self.max_sec = float(max_sec)
+        self.max_anchors = int(max_anchors)
+        self.windows_per_anchor = int(windows_per_anchor)
+
+    def generate(self, ix, weights, strategy="hybrid", use_stitch=True):
+        if strategy not in {"baseline", "semantic", "hybrid"}:
+            raise ValueError("strategy must be 'baseline', 'semantic', or 'hybrid'")
+
         pool = []
-        if strategy in ["baseline", "hybrid"]:
-            pool.extend(continuous(ix, w))
+        if strategy in {"baseline", "hybrid"}:
+            pool.extend(continuous(ix, weights))
             if use_stitch:
-                pool.extend(stitched(ix, w))
-        if strategy in ["semantic", "hybrid"]:
-            pool.extend(self._generate_semantic_anchors(ix, w))
+                pool.extend(stitched(ix, weights))
+        if strategy in {"semantic", "hybrid"}:
+            pool.extend(self._generate_semantic_anchors(ix, weights))
         return self._deduplicate(pool)
 
-    def _generate_semantic_anchors(self, ix: EpisodeIndex, w: dict) -> list[Candidate]:
-        anchors = []
-        # Leverages high-stakes detection points for semantic event grounding
-        for s in ix.starts:
-            for e in ix.ends:
-                if self.min_sec <= (e - s) <= self.max_sec:
-                    c = _mk(ix, [(s, e)], s, w, "semantic_anchor")
-                    if c and c.f.hook >= 0.5:
-                        anchors.append(c)
-        return anchors[:10]
+    def _generate_semantic_anchors(self, ix, weights):
+        """Generate legal 20-60s windows containing detected narrative events."""
+        anchors = extract_semantic_anchors(ix.ep.events)
+        output = []
 
-    def _deduplicate(self, candidates: list[Candidate]) -> list[Candidate]:
+        for anchor in sorted(anchors, key=lambda item: item.confidence, reverse=True)[:self.max_anchors]:
+            eligible_starts = [
+                start for start in ix.starts
+                if start <= anchor.start and anchor.start - start <= self.max_sec - self.min_sec
+            ]
+            eligible_ends = [end for end in ix.ends if end >= anchor.end]
+            proposals = []
+
+            for start in eligible_starts:
+                min_end = max(anchor.end, start + self.min_sec)
+                max_end = min(start + self.max_sec, ix.duration)
+                possible_ends = [end for end in eligible_ends if min_end <= end <= max_end]
+                if not possible_ends:
+                    continue
+
+                target_end = min(max(start + 40.0, min_end), max_end)
+                end = min(possible_ends, key=lambda value: abs(value - target_end))
+                proposals.append((abs((end - start) - 40.0), start, end))
+
+            proposals.sort()
+            for _, start, end in proposals[:self.windows_per_anchor]:
+                candidate = _make_candidate(
+                    ix, [(start, end)], start, weights, "semantic_anchor"
+                )
+                if candidate is None:
+                    continue
+
+                bonus = 0.06 * anchor.confidence
+                candidate.score = min(1.0, candidate.score + bonus)
+                candidate.parts.update({
+                    "semantic_anchor": anchor.confidence,
+                    "semantic_bonus": round(bonus, 4),
+                    "semantic_categories": [category.value for category in anchor.categories],
+                    "semantic_explanation": anchor.explanation,
+                    "semantic_event_idx": anchor.event_idx,
+                })
+                output.append(candidate)
+
+        output.sort(key=lambda candidate: candidate.score, reverse=True)
+        return output
+
+    def _deduplicate(self, candidates):
         seen = set()
         unique = []
-        for c in candidates:
-            sig = tuple(c.segments)
-            if sig not in seen:
-                seen.add(sig)
-                unique.append(c)
+        for candidate in sorted(candidates, key=lambda item: item.score, reverse=True):
+            signature = tuple(
+                (round(start, 2), round(end, 2))
+                for start, end in candidate.segments
+            )
+            if signature not in seen:
+                seen.add(signature)
+                unique.append(candidate)
         return unique
 
 
-def overlap(a: Candidate, b: Candidate) -> float:
-    ov = 0.0
-    for s1, e1 in a.segments:
-        for s2, e2 in b.segments:
-            ov += max(0.0, min(e1, e2) - max(s1, s2))
-    return ov / max(1e-6, min(a.duration, b.duration))
+def overlap(a, b):
+    overlap_seconds = 0.0
+    for start_a, end_a in a.segments:
+        for start_b, end_b in b.segments:
+            overlap_seconds += max(
+                0.0, min(end_a, end_b) - max(start_a, start_b)
+            )
+    return overlap_seconds / max(1e-6, min(a.duration, b.duration))
 
 
-def nms(cands: list[Candidate], k: int, max_overlap: float = 0.25) -> list[Candidate]:
-    cands = sorted(cands, key=lambda c: c.score, reverse=True)
-    keep: list[Candidate] = []
-    for c in cands:
-        if all(overlap(c, k_) <= max_overlap for k_ in keep):
-            keep.append(c)
-            if len(keep) >= k:
+def nms(candidates, k, max_overlap=0.25):
+    ranked = sorted(candidates, key=lambda candidate: candidate.score, reverse=True)
+    selected = []
+    for candidate in ranked:
+        if all(overlap(candidate, kept) <= max_overlap for kept in selected):
+            selected.append(candidate)
+            if len(selected) >= k:
                 break
-    return keep
+    return selected
 
 
-def find_for_episode(ix: EpisodeIndex, w: dict | None = None, per_ep: int = 3, use_stitch: bool = True, strategy: str = "baseline") -> list[Candidate]:
-    w = w or DEFAULT_WEIGHTS
-    if strategy in ["semantic", "hybrid"]:
-        union_gen = CandidateUnion()
-        pool = union_gen.generate(ix, w, strategy=strategy, use_stitch=use_stitch)
+def find_for_episode(ix, weights=None, per_ep=3, use_stitch=True, strategy="baseline"):
+    weights = weights or DEFAULT_WEIGHTS
+    if strategy in {"semantic", "hybrid"}:
+        pool = CandidateUnion().generate(
+            ix, weights, strategy=strategy, use_stitch=use_stitch
+        )
     else:
-        cont = continuous(ix, w)
-        pool = cont + (stitched(ix, w) if use_stitch else [])
+        pool = continuous(ix, weights)
+        if use_stitch:
+            pool += stitched(ix, weights)
     return nms(pool, per_ep)
