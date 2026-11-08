@@ -13,9 +13,9 @@
 **A screenplay-first promo discovery pipeline that identifies 20–60 second clips, validates edit boundaries, scores narrative engagement, and ranks candidates for human review.**
 
 <p>
-  <a href="https://kukupromoextractor-cwkhzwvrapo58br5mq2dpq.streamlit.app/"><strong>🚀 Try the Live App</strong></a>
+  <a href="https://kukupromoextractor-cwkhzwvrapo58br5mq2dpq.streamlit.app/"><strong> Try the Live App</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/nischay1905/Kuku_Promo_Extractor"><strong>📂 View Source Code</strong></a>
+  <a href="https://github.com/nischay1905/Kuku_Promo_Extractor"><strong> View Source Code</strong></a>
 </p>
 
 </div>
